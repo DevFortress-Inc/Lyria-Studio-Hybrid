@@ -5,6 +5,8 @@ This repository hosts the V2 architecture for the Athena Audio Engine. It transi
 
 This hybrid approach allows for a "Consumer-Grade" chat interface for rapid ideation, while retaining a "Pro-Grade" studio environment for granular DSP editing.
 
+DEMO: https://youtu.be/lGW3Mi-l6m0
+
 ---
 
 ## Quick Start (Execution Guide)
