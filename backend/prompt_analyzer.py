@@ -137,15 +137,37 @@ EXTRACTION PROCESS:
 
 REFERENCE LISTS (preferred but not exclusive - use these when appropriate, but allow other terms if mentioned):
 
-COMMON INSTRUMENTS (prefer these when they fit):
-- Strings: violin, viola, cello, bass, strings, string section
-- Brass: trumpet, trombone, tuba, horn, french horn, brass section
-- Woodwinds: flute, clarinet, oboe, bassoon, saxophone, woodwinds
-- Percussion: drums, cymbals, timpani, snare, kick, percussion
-- Keys: piano, keyboard, synthesizer, organ, harpsichord
-- Guitar: electric guitar, acoustic guitar, bass guitar, guitar, bass
-- Electronic: synthesizer, synth, electronic beats, sampler, pad, sequencer
-- Vocals: choir, vocals, voice, vocal harmonies
+COMMON INSTRUMENTS (prefer these when they fit - these are exact Lyria-recognized names):
+
+Strings:
+- violin, viola, cello, bass, strings, string section, viola ensemble, fiddle
+
+Brass:
+- trumpet, trombone, tuba, horn, french horn, brass section
+
+Woodwinds:
+- flute, clarinet, oboe, bassoon, saxophone, alto saxophone, bass clarinet, woodwinds
+
+Percussion:
+- drums, cymbals, timpani, snare, kick, percussion, bongos, conga drums, djembe, drumline, tabla, maracas, glockenspiel, marimba, vibraphone, steel drum, funk drums
+
+Keys/Piano:
+- piano, keyboard, synthesizer, organ, harpsichord, ragtime piano, rhodes piano, smooth pianos, clavichord, mellotron
+
+Guitar Family:
+- electric guitar, acoustic guitar, bass guitar, guitar, warm acoustic guitar, flamenco guitar, slide guitar, shredding guitar, banjo, mandolin, bouzouki, charango, pipa, shamisen, sitar, dulcimer
+
+Bass:
+- bass, precision bass, acid bass, boomy bass
+
+Electronic/Synths:
+- synthesizer, synth, electronic beats, sampler, pad, sequencer, buchla synths, dirty synths, spacey synths, synth pads, moog oscillations, tr-909 drum machine, 808 hip hop beat, metallic twang
+
+World/Ethnic:
+- didgeridoo, hang drum, kalimba, mbira, koto, lyre, ocarina, persian tar, balalaika ensemble, bagpipes, accordion, harmonica, hurdy-gurdy, harp
+
+Vocals:
+- choir, vocals, voice, vocal harmonies
 
 COMMON GENRES/THEMES (prefer these when they fit):
 - Popular: pop, rock, jazz, blues, country, folk, acoustic
@@ -181,13 +203,16 @@ RULES FOR REFERENCE LISTS:
      * Default: 0.5
 
 GENRE-SPECIFIC INSTRUMENT SUGGESTIONS (use reference lists above):
-- Pop: synthesizer, drums, bass, electric guitar
-- Jazz: piano, drums, bass, saxophone
-- Hip hop: drums, bass, synthesizer
-- Rock: electric guitar, drums, bass
-- Classical/Orchestral: strings, brass, woodwinds, percussion
-- Kpop: synthesizer, electronic beats, bass
-- Neo soul: piano, strings, bass, drums
+- Pop: synthesizer, drums, bass, electric guitar, smooth pianos
+- Jazz: piano, drums, bass, saxophone, alto saxophone, rhodes piano
+- Hip hop: 808 hip hop beat, drums, bass, synthesizer, tr-909 drum machine, acid bass
+- Rock: electric guitar, drums, bass, shredding guitar, precision bass
+- Classical/Orchestral: strings, brass, woodwinds, percussion, cello, viola ensemble
+- Kpop: synthesizer, electronic beats, bass, spacey synths, synth pads
+- Neo soul: piano, strings, bass, drums, rhodes piano, smooth pianos
+- Electronic/EDM: buchla synths, dirty synths, spacey synths, synth pads, moog oscillations, tr-909 drum machine
+- Funk: funk drums, precision bass, electric guitar, synthesizer
+- World/Ethnic: Use appropriate world instruments from reference list (sitar, koto, tabla, etc.)
 
 OUTPUT FORMAT (JSON only):
 {
