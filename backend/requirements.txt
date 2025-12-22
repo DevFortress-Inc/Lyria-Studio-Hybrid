@@ -5,3 +5,5 @@ streamlit
 pydub
 websockets
 pydantic
+python-dotenv
+google-generativeai

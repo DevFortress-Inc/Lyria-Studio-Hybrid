@@ -163,7 +163,12 @@ elif st.session_state.original_file and st.session_state.working_file:
                 with st.spinner("Synthesizing audio variation..."):
                     cand = f"candidate_seg_{sel_seg['id']}.wav"
                     res = asyncio.run(generate_music_file(
-                        new_prompt, int(needed), new_bpm, 7.0, new_den, cand
+                        weighted_prompts=[{"text": new_prompt, "weight": 1.0}],
+                        duration_seconds=int(needed),
+                        bpm=new_bpm,
+                        guidance=7.0,
+                        density=new_den,
+                        output_filename=cand
                     ))
                     if res:
                         st.session_state.last_generated_segment = res

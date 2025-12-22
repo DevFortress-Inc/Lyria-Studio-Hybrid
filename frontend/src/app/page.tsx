@@ -9,7 +9,14 @@ import {
   X,
   ExternalLink,
   Play,
+  Sparkles,
 } from "lucide-react";
+
+interface WeightedPrompt {
+  text: string;
+  weight: number;
+}
+
 interface Message {
   role: "user" | "assistant";
   content: string;
@@ -17,12 +24,14 @@ interface Message {
   details?: string;
   filename?: string;
   promptRef?: string;
+  weightedPrompts?: WeightedPrompt[];
 }
 
 export default function Home() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [analyzing, setAnalyzing] = useState(false);
 
   const [showSettings, setShowSettings] = useState(false);
   const [duration, setDuration] = useState(15);
@@ -35,25 +44,45 @@ export default function Home() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+
   const handleSend = async () => {
     if (!input.trim()) return;
 
     const originalPrompt = input;
-    const currentSettingsStr = `${duration}s • ${bpm} BPM • Density ${density}`;
-
-    const userMsg: Message = { role: "user", content: input };
+    const userMsg: Message = { 
+      role: "user", 
+      content: originalPrompt
+    };
+    
     setMessages((prev) => [...prev, userMsg]);
     setInput("");
     setShowSettings(false);
     setLoading(true);
+    setAnalyzing(true);
 
     try {
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
+      
+      // First, analyze the prompt to get weighted components
+      const analyzeResponse = await fetch(`${apiUrl}/analyze-prompt`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: originalPrompt }),
+      });
+
+      if (!analyzeResponse.ok) throw new Error("Error analyzing prompt");
+
+      const analyzeData = await analyzeResponse.json();
+      const weightedPrompts = analyzeData.weighted_prompts || [{ text: originalPrompt, weight: 1.0 }];
+      
+      setAnalyzing(false);
+
+      // Now generate music with the analyzed components
       const response = await fetch(`${apiUrl}/generate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          prompt: userMsg.content,
+          weighted_prompts: weightedPrompts.filter(p => p.text.trim() !== ""),
           duration: duration,
           bpm: bpm,
           density: density,
@@ -71,8 +100,15 @@ export default function Home() {
         }
       }
 
+      const breakdownHeader = response.headers.get("X-Prompt-Breakdown");
+      const weightedPromptsUsed = breakdownHeader 
+        ? JSON.parse(breakdownHeader) 
+        : weightedPrompts;
+
       const blob = await response.blob();
       const audioUrl = URL.createObjectURL(blob);
+
+      const currentSettingsStr = `${duration}s • ${bpm} BPM • Density ${density}`;
 
       setMessages((prev) => [
         ...prev,
@@ -83,10 +119,12 @@ export default function Home() {
           details: currentSettingsStr,
           filename: filename,
           promptRef: originalPrompt,
+          weightedPrompts: weightedPromptsUsed,
         },
       ]);
     } catch (error) {
       console.error(error);
+      setAnalyzing(false);
       setMessages((prev) => [
         ...prev,
         { role: "assistant", content: "Error connecting to Lyria Backend." },
@@ -161,6 +199,37 @@ export default function Home() {
                 {msg.content}
               </p>
 
+              {msg.weightedPrompts && msg.weightedPrompts.length > 0 && (
+                <div className="mb-3 p-3 bg-zinc-800/50 rounded-xl border border-zinc-700/50">
+                  <div className="text-[10px] text-zinc-500 uppercase tracking-wider font-bold mb-2">
+                    AI-Detected Components
+                  </div>
+                  <div className="flex flex-wrap gap-2 mb-2">
+                    {msg.weightedPrompts.map((wp, idx) => (
+                      <div
+                        key={idx}
+                        className="flex items-center gap-2 px-3 py-1.5 bg-blue-500/10 border border-blue-500/20 rounded-lg"
+                      >
+                        <span className="text-xs text-zinc-300">{wp.text}</span>
+                        <span className="text-[10px] text-blue-400 font-mono bg-blue-500/20 px-1.5 py-0.5 rounded">
+                          {(wp.weight * 100).toFixed(0)}%
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex gap-1 h-2 rounded-full overflow-hidden">
+                    {msg.weightedPrompts.map((wp, idx) => (
+                      <div
+                        key={idx}
+                        className="bg-blue-500"
+                        style={{ width: `${wp.weight * 100}%` }}
+                        title={`${wp.text}: ${(wp.weight * 100).toFixed(0)}%`}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {msg.audioUrl && (
                 <div className="mt-4 bg-zinc-950/40 p-4 rounded-2xl border border-zinc-800/50 backdrop-blur-sm">
                   <div className="flex items-center gap-3 mb-3">
@@ -232,7 +301,9 @@ export default function Home() {
                   style={{ animationDelay: "300ms" }}
                 />
               </div>
-              <span className="font-medium">Composing track...</span>
+              <span className="font-medium">
+                {analyzing ? "Analyzing prompt and identifying components..." : "Composing track..."}
+              </span>
             </div>
           </div>
         )}

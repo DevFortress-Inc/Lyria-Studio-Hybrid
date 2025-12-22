@@ -1,9 +1,14 @@
 import os
+
+from dotenv import load_dotenv
+load_dotenv()
+
 import json
 import base64
 import wave
 import asyncio
 import contextlib
+from typing import List, Dict
 from websockets.asyncio.client import connect
 
 MODEL = 'models/lyria-realtime-exp'
@@ -23,7 +28,7 @@ def wave_file(filename, channels=2, rate=24000, sample_width=2):
 
 
 async def generate_music_file(
-        prompt: str,
+        weighted_prompts: List[Dict[str, any]],
         duration_seconds: int,
         bpm: int,
         guidance: float,
@@ -46,7 +51,6 @@ async def generate_music_file(
             raw_setup = await ws.recv()
             setup_response = json.loads(raw_setup)
 
-            weighted_prompts = [{"text": prompt, "weight": 1.0}]
             music_config = {
                 'music_generation_config': {
                     'bpm': str(bpm),
