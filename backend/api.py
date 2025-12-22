@@ -33,11 +33,17 @@ class GenerateRequest(BaseModel):
     weighted_prompts: Optional[List[WeightedPrompt]] = None
     duration: int = 15
     bpm: int = 90
+    guidance: float = 7.0
     density: float = 0.5
 
 
+class PreviousTrackContext(BaseModel):
+    weighted_prompts: List[WeightedPrompt]
+    parameters: Optional[dict] = None
+
 class AnalyzePromptRequest(BaseModel):
     prompt: str
+    previous_context: Optional[PreviousTrackContext] = None
 
 
 @app.get("/")
@@ -47,12 +53,27 @@ def health_check():
 
 @app.post("/analyze-prompt")
 async def analyze_prompt(req: AnalyzePromptRequest):
-    """AI-powered prompt analysis endpoint"""
+    """AI-powered prompt analysis endpoint with optional previous context for edits"""
     try:
-        weighted_components = prompt_analyzer.analyze_prompt_for_weighted_components(req.prompt)
+        previous_context = None
+        if req.previous_context:
+            previous_context = {
+                "weighted_prompts": [{"text": wp.text, "weight": wp.weight} for wp in req.previous_context.weighted_prompts],
+                "parameters": req.previous_context.parameters or {}
+            }
+        
+        analysis_result = prompt_analyzer.analyze_prompt_for_weighted_components(
+            req.prompt,
+            previous_context=previous_context
+        )
         return JSONResponse(content={
             "original_prompt": req.prompt,
-            "weighted_prompts": weighted_components
+            "weighted_prompts": analysis_result.get("weighted_prompts", []),
+            "parameters": analysis_result.get("parameters", {
+                "bpm": 90,
+                "guidance": 7.0,
+                "density": 0.5
+            })
         })
     except ValueError as e:
         print(f"Error analyzing prompt: {e}")
@@ -84,7 +105,7 @@ async def generate_audio(req: GenerateRequest):
             weighted_prompts=weighted_prompts_data,
             duration_seconds=req.duration,
             bpm=req.bpm,
-            guidance=7.0,
+            guidance=req.guidance,
             density=req.density,
             output_filename=filename
         )

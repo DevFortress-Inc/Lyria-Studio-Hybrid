@@ -1,7 +1,7 @@
 import os
 import json
 import re
-from typing import List, Dict
+from typing import List, Dict, Optional
 
 try:
     import google.generativeai as genai
@@ -20,18 +20,102 @@ if API_KEY and GEMINI_AVAILABLE:
         GEMINI_AVAILABLE = False
 
 
-def analyze_prompt_for_weighted_components(prompt: str) -> List[Dict[str, any]]:
+def analyze_prompt_for_weighted_components(
+    prompt: str,
+    previous_context: Optional[Dict[str, any]] = None
+) -> Dict[str, any]:
     """
-    Uses Gemini to intelligently break down a music prompt into weighted components.
-    Returns a list of weighted prompts that sum to 1.0
+    Uses Gemini to intelligently break down a music prompt into weighted components
+    and extract/infer BPM, guidance, and density parameters.
+    
+    If previous_context is provided, treats the prompt as an edit instruction
+    and merges it with the previous track's components.
+    
+    Returns a dict with 'weighted_prompts' and 'parameters' (bpm, guidance, density)
     """
     if not API_KEY or not GEMINI_AVAILABLE:
         raise ValueError("Gemini AI is not available. Please check GOOGLE_API_KEY environment variable.")
     
+    # Detect if this is an edit instruction
+    # If previous context exists, check if prompt looks like an edit
+    is_edit = False
+    if previous_context:
+        edit_keywords = ["add", "remove", "more", "less", "increase", "decrease", "change", "make it", "make the", "turn it", "adjust", "faster", "slower", "quieter", "louder"]
+        prompt_lower = prompt.lower()
+        looks_like_edit = any(keyword in prompt_lower for keyword in edit_keywords)
+        
+        # If context exists and it looks like an edit, treat as edit
+        # Otherwise, if context exists but doesn't look like edit, treat as new track (user wants fresh start)
+        is_edit = looks_like_edit
+    
     try:
         model = genai.GenerativeModel('gemini-3-flash-preview')
         
-        system_prompt = """You are a music production assistant. Extract the GENRE and determine appropriate INSTRUMENTS to create weighted components.
+        if is_edit and previous_context:
+            # EDIT MODE: Modify existing track based on instruction
+            previous_components = previous_context.get("weighted_prompts", [])
+            previous_params = previous_context.get("parameters", {})
+            
+            system_prompt = f"""You are a music production assistant. The user wants to EDIT a previous track based on this instruction: "{prompt}"
+
+PREVIOUS TRACK COMPONENTS:
+{json.dumps(previous_components, indent=2)}
+
+PREVIOUS PARAMETERS:
+- BPM: {previous_params.get('bpm', 90)}
+- Guidance: {previous_params.get('guidance', 7.0)}
+- Density: {previous_params.get('density', 0.5)}
+
+EDIT INSTRUCTION: "{prompt}"
+
+YOUR TASK:
+1. Understand the edit instruction (e.g., "add more piano", "remove drums", "make it faster", "less dense")
+2. MODIFY the previous components based on the instruction:
+   - "add [instrument]": Increase weight of existing instrument OR add new instrument
+   - "remove [instrument]": Remove that component entirely
+   - "more [instrument]": Increase its weight significantly
+   - "less [instrument]": Decrease its weight or remove if very low
+   - "make it faster/slower": Adjust BPM accordingly
+   - "more/less dense": Adjust density parameter
+   - "change genre to X": Update genre component
+3. Keep components that aren't mentioned in the edit
+4. Re-normalize weights to sum to 1.0
+5. Update parameters if mentioned (BPM, guidance, density)
+
+EDIT EXAMPLES:
+
+Previous: [{{"text": "pop", "weight": 0.4}}, {{"text": "piano", "weight": 0.3}}, {{"text": "drums", "weight": 0.2}}, {{"text": "bass", "weight": 0.1}}]
+Instruction: "add more piano"
+Output: [{{"text": "pop", "weight": 0.35}}, {{"text": "piano", "weight": 0.45}}, {{"text": "drums", "weight": 0.15}}, {{"text": "bass", "weight": 0.05}}]
+
+Previous: [{{"text": "jazz", "weight": 0.4}}, {{"text": "piano", "weight": 0.3}}, {{"text": "drums", "weight": 0.2}}, {{"text": "bass", "weight": 0.1}}]
+Instruction: "remove drums"
+Output: [{{"text": "jazz", "weight": 0.5}}, {{"text": "piano", "weight": 0.35}}, {{"text": "bass", "weight": 0.15}}]
+
+Previous: [{{"text": "pop", "weight": 0.4}}, {{"text": "synthesizer", "weight": 0.3}}, {{"text": "drums", "weight": 0.2}}, {{"text": "bass", "weight": 0.1}}]
+BPM: 120
+Instruction: "make it faster"
+Output: Same components, but BPM increased to 140-160
+
+OUTPUT FORMAT (JSON only):
+{{
+  "components": [
+    {{"text": "genre", "weight": 0.4}},
+    {{"text": "instrument1", "weight": 0.3}},
+    {{"text": "instrument2", "weight": 0.2}},
+    {{"text": "instrument3", "weight": 0.1}}
+  ],
+  "parameters": {{
+    "bpm": 120,
+    "guidance": 7.0,
+    "density": 0.6
+  }}
+}}
+
+Apply the edit instruction now:"""
+        else:
+            # NEW TRACK MODE: Original behavior
+            system_prompt = """You are a music production assistant. Extract the GENRE, determine appropriate INSTRUMENTS, and infer BPM, GUIDANCE, and DENSITY parameters.
 
 CRITICAL RULES:
 1. ALWAYS identify the genre/style from the prompt
@@ -42,6 +126,7 @@ CRITICAL RULES:
 6. Create 3-5 components (genre + 2-4 instruments)
 7. Weights must sum to 1.0
 8. Genre typically gets 30-50% weight, lead instruments get higher weights
+9. EXTRACT or INFER BPM, GUIDANCE, and DENSITY from the prompt
 
 EXTRACTION PROCESS:
 1. Identify the GENRE (e.g., pop, jazz, kpop, classical, orchestral, hip hop, rock, etc.)
@@ -50,7 +135,52 @@ EXTRACTION PROCESS:
    - If NO: Infer 2-4 typical instruments for that genre
 3. Assign weights: genre (30-50%), lead instruments (20-30% each), supporting instruments (10-20% each)
 
-COMMON GENRE INSTRUMENTS (use when not specified):
+REFERENCE LISTS (preferred but not exclusive - use these when appropriate, but allow other terms if mentioned):
+
+COMMON INSTRUMENTS (prefer these when they fit):
+- Strings: violin, viola, cello, bass, strings, string section
+- Brass: trumpet, trombone, tuba, horn, french horn, brass section
+- Woodwinds: flute, clarinet, oboe, bassoon, saxophone, woodwinds
+- Percussion: drums, cymbals, timpani, snare, kick, percussion
+- Keys: piano, keyboard, synthesizer, organ, harpsichord
+- Guitar: electric guitar, acoustic guitar, bass guitar, guitar, bass
+- Electronic: synthesizer, synth, electronic beats, sampler, pad, sequencer
+- Vocals: choir, vocals, voice, vocal harmonies
+
+COMMON GENRES/THEMES (prefer these when they fit):
+- Popular: pop, rock, jazz, blues, country, folk, acoustic
+- Electronic: EDM, techno, house, trance, dubstep, electronic, ambient
+- Classical: classical, orchestral, cinematic, baroque, romantic
+- Urban: hip hop, rap, R&B, neo soul, funk, disco
+- World: Kpop, Jpop, Latin, reggae, world music, ethnic
+- Styles: ballad, energetic, calm, dark, epic, emotional, mysterious, upbeat, slow, fast
+
+RULES FOR REFERENCE LISTS:
+- PREFER terms from the reference lists when they fit the prompt
+- If the prompt mentions something NOT in the lists, use it (e.g., "sitar", "didgeridoo", "trap", "drill")
+- If the prompt is vague, choose from reference lists
+- Group similar instruments into families (e.g., "strings" not "violin, cello, bass")
+- Use single-word or short phrases only
+
+4. Extract or infer PARAMETERS:
+   - BPM: Look for explicit BPM values (e.g., "120 BPM", "at 140 bpm") OR infer from genre/style:
+     * Slow/ballad/ambient: 60-80
+     * Jazz/blues: 80-120
+     * Pop/rock: 100-140
+     * EDM/hip hop: 120-160
+     * Fast/energetic: 140-180
+   - GUIDANCE: Look for explicit values OR infer from prompt specificity:
+     * Very specific prompt with details: 8.0-9.0
+     * Moderately specific: 6.0-7.5
+     * Vague/creative: 4.0-6.0
+     * Default: 7.0
+   - DENSITY: Look for explicit values (e.g., "sparse", "dense", "minimal") OR infer from genre:
+     * Minimal/ambient: 0.2-0.4
+     * Pop/rock: 0.5-0.7
+     * Orchestral/complex: 0.7-0.9
+     * Default: 0.5
+
+GENRE-SPECIFIC INSTRUMENT SUGGESTIONS (use reference lists above):
 - Pop: synthesizer, drums, bass, electric guitar
 - Jazz: piano, drums, bass, saxophone
 - Hip hop: drums, bass, synthesizer
@@ -66,7 +196,12 @@ OUTPUT FORMAT (JSON only):
     {"text": "instrument1", "weight": 0.3},
     {"text": "instrument2", "weight": 0.2},
     {"text": "instrument3", "weight": 0.1}
-  ]
+  ],
+  "parameters": {
+    "bpm": 120,
+    "guidance": 7.0,
+    "density": 0.6
+  }
 }
 
 EXAMPLES:
@@ -78,7 +213,12 @@ Output: {
     {"text": "synthesizer", "weight": 0.3},
     {"text": "drums", "weight": 0.2},
     {"text": "bass", "weight": 0.1}
-  ]
+  ],
+  "parameters": {
+    "bpm": 120,
+    "guidance": 7.0,
+    "density": 0.6
+  }
 }
 
 Input: "i want to develop a catchy pop song that has trumpets leading"
@@ -139,12 +279,53 @@ Output: {
     {"text": "piano", "weight": 0.4},
     {"text": "drums", "weight": 0.15},
     {"text": "bass", "weight": 0.1}
-  ]
+  ],
+  "parameters": {
+    "bpm": 110,
+    "guidance": 7.5,
+    "density": 0.6
+  }
 }
 
-Now extract the genre and determine appropriate instruments:"""
+Input: "slow jazz ballad at 80 bpm with low density"
+Output: {
+  "components": [
+    {"text": "jazz", "weight": 0.4},
+    {"text": "piano", "weight": 0.35},
+    {"text": "bass", "weight": 0.15},
+    {"text": "drums", "weight": 0.1}
+  ],
+  "parameters": {
+    "bpm": 80,
+    "guidance": 7.0,
+    "density": 0.3
+  }
+}
 
-        full_prompt = f"{system_prompt}\n\n{prompt}"
+Input: "fast energetic EDM track at 140 bpm"
+Output: {
+  "components": [
+    {"text": "edm", "weight": 0.4},
+    {"text": "synthesizer", "weight": 0.3},
+    {"text": "electronic beats", "weight": 0.2},
+    {"text": "bass", "weight": 0.1}
+  ],
+  "parameters": {
+    "bpm": 140,
+    "guidance": 7.0,
+    "density": 0.7
+  }
+}
+
+Now extract the genre, determine appropriate instruments, and infer BPM, guidance, and density:"""
+        
+        # Construct the full prompt
+        if is_edit and previous_context:
+            # For edits, the prompt is already included in the system prompt
+            full_prompt = system_prompt
+        else:
+            # For new tracks, append the user prompt
+            full_prompt = f"{system_prompt}\n\n{prompt}"
         response = model.generate_content(full_prompt)
         
         # Extract JSON from response - handle different response formats
@@ -187,7 +368,6 @@ Now extract the genre and determine appropriate instruments:"""
         if not components:
             print(f"Warning: AI returned no components for prompt: {prompt}")
             print(f"AI Response: {response_text[:500]}")
-            # Retry with a simpler approach
             raise ValueError("No components returned from AI")
         
         # Validate components have proper structure
@@ -220,7 +400,25 @@ Now extract the genre and determine appropriate instruments:"""
                 for comp in valid_components
             ]
         
-        return components
+        # Extract parameters with defaults
+        params = result.get("parameters", {})
+        bpm = int(params.get("bpm", 90))
+        guidance = float(params.get("guidance", 7.0))
+        density = float(params.get("density", 0.5))
+        
+        # Validate and clamp parameters
+        bpm = max(60, min(180, bpm))  # Clamp between 60-180
+        guidance = max(1.0, min(10.0, guidance))  # Clamp between 1.0-10.0
+        density = max(0.0, min(1.0, density))  # Clamp between 0.0-1.0
+        
+        return {
+            "weighted_prompts": components,
+            "parameters": {
+                "bpm": bpm,
+                "guidance": guidance,
+                "density": density
+            }
+        }
         
     except json.JSONDecodeError as e:
         print(f"JSON decode error: {e}")
