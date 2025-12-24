@@ -153,21 +153,19 @@ elif st.session_state.original_file and st.session_state.working_file:
             st.markdown(f"**Modifying: {sel_name}**")
             new_prompt = st.text_area("In-painting Prompt", value=st.session_state.original_prompt, height=100)
 
-            sc1, sc2, sc3 = st.columns(3)
-            new_bpm = sc1.slider("BPM", 60, 180, 90)
-            new_den = sc2.slider("Density", 0.0, 1.0, 0.6)
-            xfade = sc3.number_input("Crossfade (s)", 1, 5, 3)
+            sc1, sc2 = st.columns(2)
+            xfade = sc1.number_input("Crossfade (s)", 1, 5, 3)
+            sc2.info("Note: lyria-002 generates fixed 30s clips")
 
             if st.button(f"⚡ Regenerate {sel_name}", type="secondary", use_container_width=True):
-                needed = (sel_seg['end'] - sel_seg['start']) + (xfade / 2)
+                # Note: lyria-002 generates fixed 30-second clips
+                # The needed duration will be handled by audio stitching
                 with st.spinner("Synthesizing audio variation..."):
                     cand = f"candidate_seg_{sel_seg['id']}.wav"
                     res = asyncio.run(generate_music_file(
-                        weighted_prompts=[{"text": new_prompt, "weight": 1.0}],
-                        duration_seconds=int(needed),
-                        bpm=new_bpm,
-                        guidance=7.0,
-                        density=new_den,
+                        prompt=new_prompt,
+                        negative_prompt="",
+                        seed=None,
                         output_filename=cand
                     ))
                     if res:

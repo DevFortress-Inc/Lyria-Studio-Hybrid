@@ -55,9 +55,21 @@ streamlit run studio.py --server.port 8501
 Initialize the Python environment for signal processing and API management.
 
 cd backend
-pip install fastapi uvicorn python-multipart streamlit pydub websockets
+pip install -r requirements.txt
 
-Note: Ensure GOOGLE_API_KEY is set in your environment variables.
+**Environment Variables Required:**
+- `PROJECT_ID`: Your Google Cloud Project ID
+- `LOCATION`: Vertex AI region (default: `us-central1`)
+- `GOOGLE_APPLICATION_CREDENTIALS`: Path to your service account JSON key file
+
+Example `.env` file:
+```
+PROJECT_ID=your-gcp-project-id
+LOCATION=us-central1
+GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account-key.json
+```
+
+**Note:** The backend now uses Vertex AI SDK with service account authentication. Ensure your service account has the necessary permissions to access the Lyria-002 model.
 
 ### 2. Frontend Setup
 Install the React dependencies and UI component libraries.
@@ -83,7 +95,7 @@ Contains the proprietary logic for audio manipulation and external model orchest
     * Function: Contains the core algorithms for "Smart Stitching," crossfade calculation, and temporary file management. This is the DSP engine of the project.
 * lyria_generator.py
     * Role: Model Gateway.
-    * Function: Manages the asynchronous WebSocket connection to the Google Lyria model, handling stream buffering and binary decoding.
+    * Function: Manages the Vertex AI REST API connection to the Google Lyria-002 model, handling batch generation and audio file output.
 
 ### Frontend Layer (/frontend)
 A modern, responsive client built with Next.js 14 (App Router).

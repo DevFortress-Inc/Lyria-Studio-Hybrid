@@ -3,7 +3,6 @@ uvicorn
 python-multipart
 streamlit
 pydub
-websockets
 pydantic
 python-dotenv
-google-generativeai
+google-cloud-aiplatform

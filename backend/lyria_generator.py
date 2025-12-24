@@ -1,91 +1,94 @@
 import os
-
 from dotenv import load_dotenv
 load_dotenv()
 
-import json
 import base64
-import wave
-import asyncio
-import contextlib
-from typing import List, Dict
-from websockets.asyncio.client import connect
+from google.cloud import aiplatform
+from google.protobuf import json_format
+from google.protobuf.struct_pb2 import Value
 
-MODEL = 'models/lyria-realtime-exp'
-HOST = 'generativelanguage.googleapis.com'
-API_KEY = os.environ.get("GOOGLE_API_KEY")
-
-URI = f'wss://{HOST}/ws/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateMusic?key={API_KEY}'
-
-
-@contextlib.contextmanager
-def wave_file(filename, channels=2, rate=24000, sample_width=2):
-    with wave.open(filename, "wb") as wf:
-        wf.setnchannels(channels)
-        wf.setsampwidth(sample_width)
-        wf.setframerate(rate)
-        yield wf
+MODEL_ID = 'lyria-002'
+PROJECT_ID = os.environ.get("PROJECT_ID")
+LOCATION = os.environ.get("LOCATION", "us-central1")
+CREDENTIALS_PATH = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
 
 
 async def generate_music_file(
-        weighted_prompts: List[Dict[str, any]],
-        duration_seconds: int,
-        bpm: int,
-        guidance: float,
-        density: float,
+        prompt: str,
+        negative_prompt: str = "",
+        seed: int = None,
         output_filename: str = "temp_music.wav"
 ) -> str:
-    if not API_KEY:
-        raise ValueError("GOOGLE_API_KEY not found in environment.")
-    target_duration = duration_seconds
-
-    sample_rate = 24000
-    CHANNELS = 2
-    SAMPLE_WIDTH_BYTES = 2
-
-    print(f"Connecting to Lyria...")
-
+    """Generates high-fidelity audio using the lyria-002 batch model."""
+    
+    # Validate required environment variables
+    if not PROJECT_ID:
+        raise ValueError("PROJECT_ID not found in environment.")
+    if not CREDENTIALS_PATH:
+        raise ValueError("GOOGLE_APPLICATION_CREDENTIALS not found in environment.")
+    if not os.path.exists(CREDENTIALS_PATH):
+        raise ValueError(f"Credentials file not found at {CREDENTIALS_PATH}")
+    
+    print(f"Requesting music generation from {MODEL_ID}...")
+    
     try:
-        async with connect(URI, additional_headers={'Content-Type': 'application/json'}) as ws:
-            await ws.send(json.dumps({'setup': {"model": MODEL}}))
-            raw_setup = await ws.recv()
-            setup_response = json.loads(raw_setup)
+        # Initialize the Vertex AI client
+        aiplatform.init(project=PROJECT_ID, location=LOCATION)
 
-            music_config = {
-                'music_generation_config': {
-                    'bpm': str(bpm),
-                    'guidance': guidance,
-                    'density': density
-                }
-            }
+        # The endpoint for Lyria-002
+        endpoint_path = f"projects/{PROJECT_ID}/locations/{LOCATION}/publishers/google/models/{MODEL_ID}"
+        
+        # Prepare the instance (the prompt data)
+        instance_dict = {
+            "prompt": prompt,
+            "negative_prompt": negative_prompt,
+        }
+        if seed is not None:
+            instance_dict["seed"] = seed
 
-            await ws.send(json.dumps({"client_content": {"weighted_prompts": weighted_prompts}}))
-            await ws.send(json.dumps(music_config))
-            await ws.send(json.dumps({'playback_control': 'PLAY'}))
+        # Convert dict to a Protobuf Value object
+        instance = json_format.ParseDict(instance_dict, Value())
+        instances = [instance]
 
-            bytes_per_second = sample_rate * CHANNELS * SAMPLE_WIDTH_BYTES
-            target_total_bytes = bytes_per_second * target_duration
-            total_bytes_written = 0
+        # Parameters: sample_count can be 1-4 (Note: cannot use with seed)
+        parameters_dict = {}
+        if seed is None:
+            parameters_dict["sample_count"] = 1
+            
+        parameters = json_format.ParseDict(parameters_dict, Value())
 
-            with wave_file(output_filename, rate=sample_rate, channels=CHANNELS,
-                           sample_width=SAMPLE_WIDTH_BYTES) as wav:
-                async for raw_response in ws:
-                    response = json.loads(raw_response)
-                    server_content = response.pop('serverContent', None)
+        # Create the prediction client
+        client_options = {"api_endpoint": f"{LOCATION}-aiplatform.googleapis.com"}
+        predict_client = aiplatform.gapic.PredictionServiceClient(client_options=client_options)
 
-                    if server_content:
-                        audio_chunk = server_content.pop('audioChunks', None)
-                        if audio_chunk:
-                            b64data = audio_chunk[0]
-                            pcm_data = base64.b64decode(b64data['data'])
-                            wav.writeframes(pcm_data)
-                            total_bytes_written += len(pcm_data)
+        # Make the prediction request
+        response = predict_client.predict(
+            endpoint=endpoint_path, 
+            instances=instances, 
+            parameters=parameters
+        )
 
-                            if total_bytes_written >= target_total_bytes:
-                                await ws.send(json.dumps({'playback_control': 'STOP'}))
-                                break
-
-            return output_filename
+        # Handle the response
+        for i, prediction in enumerate(response.predictions):
+            # Lyria returns audioContent as a base64 encoded string
+            audio_data_b64 = prediction.get("audioContent")
+            
+            if audio_data_b64:
+                # Decode and save the file
+                audio_bytes = base64.b64decode(audio_data_b64)
+                
+                # If generating multiple samples, append index to filename
+                final_name = f"{i}_{output_filename}" if len(response.predictions) > 1 else output_filename
+                
+                with open(final_name, "wb") as f:
+                    f.write(audio_bytes)
+                
+                print(f"Success! Music saved to {final_name}")
+                return final_name
+            else:
+                raise ValueError("No audioContent in prediction response")
+        
+        raise ValueError("No predictions returned from model")
 
     except Exception as e:
         print(f"API Error: {e}")
