@@ -5,12 +5,14 @@ import wave
 import asyncio
 import contextlib
 from websockets.asyncio.client import connect
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 MODEL = 'models/lyria-realtime-exp'
 HOST = 'generativelanguage.googleapis.com'
 API_KEY = os.environ.get("GOOGLE_API_KEY")
-
-URI = f'wss://{HOST}/ws/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateMusic?key={API_KEY}'
 
 
 @contextlib.contextmanager
@@ -38,10 +40,13 @@ async def generate_music_file(
     CHANNELS = 2
     SAMPLE_WIDTH_BYTES = 2
 
+    # Construct URI with API_KEY (done here to ensure API_KEY is loaded)
+    uri = f'wss://{HOST}/ws/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateMusic?key={API_KEY}'
+
     print(f"Connecting to Lyria...")
 
     try:
-        async with connect(URI, additional_headers={'Content-Type': 'application/json'}) as ws:
+        async with connect(uri, additional_headers={'Content-Type': 'application/json'}) as ws:
             await ws.send(json.dumps({'setup': {"model": MODEL}}))
             raw_setup = await ws.recv()
             setup_response = json.loads(raw_setup)

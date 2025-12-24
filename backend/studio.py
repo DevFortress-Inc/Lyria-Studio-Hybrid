@@ -2,8 +2,12 @@ import streamlit as st
 import asyncio
 import os
 import time
+from dotenv import load_dotenv
 from lyria_generator import generate_music_file
 import audio_utils
+
+# Load environment variables from .env file
+load_dotenv()
 
 st.set_page_config(page_title="Athena Studio Pro", layout="wide", page_icon="🎛️")
 

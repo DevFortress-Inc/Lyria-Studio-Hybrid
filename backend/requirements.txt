@@ -5,3 +5,4 @@ streamlit
 pydub
 websockets
 pydantic
+python-dotenv

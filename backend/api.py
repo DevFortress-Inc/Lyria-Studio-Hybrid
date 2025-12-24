@@ -5,8 +5,12 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
+from dotenv import load_dotenv
 import lyria_generator
 import audio_utils
+
+# Load environment variables from .env file
+load_dotenv()
 
 app = FastAPI(title="Lyria Audio API", version="1.0.0")
 
